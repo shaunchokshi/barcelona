@@ -292,14 +292,12 @@ public func loadChatMatchingGUID(_ guid: String, badChat: IMChat) -> IMChat? {
     // more reliable, it's a weird XPC issue and we can start debugging that.
     // However, setting this can cause issues ('cause we're telling the system that we only have read access to the db when
     // that may not be true), so we reset it immediately after and hope we don't cause a race condition
-    IMDSetIsRunningInDatabaseServerProcess(1)
 
     guard let imdchat = IMDChatRegistry.sharedInstance().existingChat(withGUID: guid) else {
         log.warning("Can't get IMDChat for guid \(guid); failing")
         return nil
     }
 
-    IMDSetIsRunningInDatabaseServerProcess(0)
 
     guard let dict = imdchat.chatProperties() else {
         log.warning("Can't get dictionary representation for IMDChat \(imdchat)")

@@ -428,18 +428,7 @@ public actor CBChatRegistry {
             } else if let chatIdentifier, let service {
                 return .guid(BLCreateGUID(service, CBChatStyle(chatStyle), chatIdentifier))
             } else if let messageID {
-                func withPersistenceAccess<P>(_ callback: () throws -> P) rethrows -> P {
-                    if !IMDIsRunningInDatabaseServerProcess() {
-                        IMDSetIsRunningInDatabaseServerProcess(1)
-                        defer {
-                            IMDSetIsRunningInDatabaseServerProcess(0)
-                        }
-                        return try callback()
-                    } else {
-                        return try callback()
-                    }
-                }
-                return withPersistenceAccess {
+                return {
                     if let chat = IMDChatRecordCopyChatForMessageID(messageID),
                        let chatGUID = IMDChatRecordCopyGUID(kCFAllocatorDefault, chat)
                     {

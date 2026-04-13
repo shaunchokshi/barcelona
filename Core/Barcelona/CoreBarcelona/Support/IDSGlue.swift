@@ -9,7 +9,7 @@
 import Foundation
 import IDS
 
-class BLServiceListener: IDSServiceDelegate {
+class BLServiceListener: NSObject, IDSServiceDelegate {
     static let shared = BLServiceListener()
 
     func service(
