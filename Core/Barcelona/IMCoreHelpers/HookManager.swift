@@ -84,7 +84,7 @@ private func IDSQueryHooks() throws -> Interpose {
     return try Interpose(NSClassFromString("_IDSIDQueryController")!) {
         try $0.prepareHook(#selector(_IDSIDQueryController.__sendMessage(_:queue:reply:fail:waitForReply:))) {
             (
-                store: TypedHook<@convention (c) (
+                store: TypedHook<@convention(c) (
                     AnyObject,
                     Selector,
                     OS_xpc_object,

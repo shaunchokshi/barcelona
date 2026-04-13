@@ -435,7 +435,7 @@ public actor CBChatRegistry {
                         return .guid(chatGUID as String)
                     }
                     return nil
-                }
+                }()
             }
             return nil
         }()
