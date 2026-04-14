@@ -22,21 +22,12 @@ extension Array where Element == String {
 
 extension GetChatsCommand: Runnable {
     func run(payload: IPCPayload, ipcChannel: MautrixIPCChannel) async {
-        payload.fail(strategy: .internal_error("get_chats is not supported"), ipcChannel: ipcChannel)
-        /*SentrySDK.configureScope { scope in
-            scope.setContext(
-                value: [
-                    "id": String(describing: payload.id),
-                    "command": payload.command.name.rawValue,
-                ],
-                key: "payload"
-            )
-        }
-        let span = SentrySDK.startTransaction(name: "GetChatsCommand", operation: "run", bindToScope: true)
-        let breadcrumb = Breadcrumb(level: .debug, category: "command")
-        breadcrumb.message = "GetChatsCommand/\(payload.id ?? 0)"
-        breadcrumb.type = "user"
-        SentrySDK.addBreadcrumb(breadcrumb)
+        let span = SentrySDK.startIPCTransaction(forPayload: payload, uppercasedName: "GetChatsCommand")
+
+        // `min_timestamp <= 0` → return every chat currently known to IMChatRegistry.
+        // Pure Swift against `IMChatRegistry.shared.allChats` + `blChatGUID`; no IMD XPC
+        // calls, no direct chat.db access. Safe on macOS 26 — the same enumeration runs
+        // during CBDaemonListener setup (see `loadedChats:N` log line).
         if min_timestamp <= 0 {
             payload.reply(
                 withResponse: .chats_resolved(IMChatRegistry.shared.allChats.map(\.blChatGUID)),
@@ -46,16 +37,21 @@ extension GetChatsCommand: Runnable {
             return
         }
 
+        // `min_timestamp > 0` → return every chat that has a message newer than the
+        // supplied timestamp. Reads chat.db via GRDB (SQLite) directly. Does NOT use
+        // `IMDSetIsRunningInDatabaseServerProcess(1)` — that hack was removed in the
+        // macOS 26 compatibility patch because it crashes IMDPersistence.framework.
+        // GRDB opens chat.db with full-disk-access credentials and runs a read-only
+        // SELECT against chat_message_join ⋈ chat; no private-framework calls in the
+        // hot path. See BarcelonaDB/Queries/ChatMessageJoins.swift.
         do {
             let timestamps = try await DBReader.shared.latestMessageTimestamps()
 
-            let guids =
-                timestamps.mapValues { timestamp, guid in
+            let guids = timestamps
+                .mapValues { timestamp, guid in
                     (IMDPersistenceTimestampToUnixSeconds(timestamp: timestamp), guid)
                 }
-                .filter { chatID, pair in
-                    pair.0 > min_timestamp
-                }
+                .filter { _, pair in pair.0 > min_timestamp }
                 .map(\.value.1)
 
             payload.reply(withResponse: .chats_resolved(guids.dedupeChatGUIDs()), ipcChannel: ipcChannel)
@@ -64,7 +60,7 @@ extension GetChatsCommand: Runnable {
             payload.fail(strategy: .internal_error(error.localizedDescription), ipcChannel: ipcChannel)
             SentrySDK.capture(error: error)
             span.finish(status: .internalError)
-        }*/
+        }
     }
 }
 
