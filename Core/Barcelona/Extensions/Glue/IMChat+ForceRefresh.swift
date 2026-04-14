@@ -9,6 +9,31 @@ import Foundation
 import IMCore
 import Logging
 
+// Lazily-initialised, thread-safe "log once per process" helpers for the
+// private-selector availability checks in `watchAllHandles()` below.
+// `static let` initializers in Swift are guaranteed to run exactly once
+// (dispatch_once under the hood), so assigning the Logger call to
+// `static let` means the message is emitted the first time the property
+// is touched and never again. Without this, the daemon logs one line
+// per IMChat at startup (~200+ lines for a typical user's chat history).
+private enum WatchAllHandlesAvailabilityLog {
+    static let beginObservingHandleAvailabilityMissing: Void = {
+        Logger(label: "IMChat")
+            .debug(
+                "IMChat does not respond to beginObservingHandleAvailability on this macOS version; skipping for all chats (further occurrences suppressed)",
+                source: "IMChat"
+            )
+    }()
+
+    static let startWatchingIMHandleMissing: Void = {
+        Logger(label: "IMChat")
+            .debug(
+                "IMAccount does not respond to startWatchingIMHandle: on this macOS version; skipping for all chats (further occurrences suppressed)",
+                source: "IMChat"
+            )
+    }()
+}
+
 extension IMChat {
     public var log: Logging.Logger {
         Logger(label: "IMChat")
@@ -39,10 +64,8 @@ extension IMChat {
         if (self as AnyObject).responds(to: observeSel) {
             _ = (self as AnyObject).perform(observeSel)
         } else {
-            log.debug(
-                "IMChat does not respond to beginObservingHandleAvailability on this macOS version; skipping",
-                source: "IMChat"
-            )
+            // Log once per process; see WatchAllHandlesAvailabilityLog above.
+            _ = WatchAllHandlesAvailabilityLog.beginObservingHandleAvailabilityMissing
         }
 
         guard let participants else {
@@ -59,10 +82,8 @@ extension IMChat {
                 _ = (account as AnyObject).perform(watchSel, with: handle)
             }
         } else {
-            log.debug(
-                "IMAccount does not respond to startWatchingIMHandle: on this macOS version; skipping",
-                source: "IMChat"
-            )
+            // Log once per process; see WatchAllHandlesAvailabilityLog above.
+            _ = WatchAllHandlesAvailabilityLog.startWatchingIMHandleMissing
         }
     }
 }
