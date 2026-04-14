@@ -16,7 +16,12 @@ extension IPCPayload {
 }
 
 public enum IPCResponse: Encodable {
-    case chats_resolved([String])
+    // `chats_resolved` is the reply payload for the `get_chats` IPC command.
+    // mautrix-imessage's Go side unmarshals this into `[]imessage.ChatIdentifier`,
+    // so the array element must serialize to `{"chat_guid": ..., "thread_id": ...}`
+    // — NOT a bare string GUID. See ChatIdentifier in BLChat.swift for the
+    // wire-compatible mirror of the Go-side struct.
+    case chats_resolved([ChatIdentifier])
     case chat_resolved(BLChat?)
     case messages([BLMessage])
     case chat_avatar(BLAttachment?)

@@ -25,12 +25,14 @@ extension GetChatsCommand: Runnable {
         let span = SentrySDK.startIPCTransaction(forPayload: payload, uppercasedName: "GetChatsCommand")
 
         // `min_timestamp <= 0` → return every chat currently known to IMChatRegistry.
-        // Pure Swift against `IMChatRegistry.shared.allChats` + `blChatGUID`; no IMD XPC
-        // calls, no direct chat.db access. Safe on macOS 26 — the same enumeration runs
-        // during CBDaemonListener setup (see `loadedChats:N` log line).
+        // Pure Swift against `IMChatRegistry.shared.allChats` + `blChatIdentifier`; no
+        // IMD XPC calls, no direct chat.db access. Safe on macOS 26 — the same
+        // enumeration runs during CBDaemonListener setup (see `loadedChats:N` log line).
+        // Each chat carries its own `groupID` as `thread_id`, matching what `get_chat`
+        // returns later when the bridge syncs each portal individually.
         if min_timestamp <= 0 {
             payload.reply(
-                withResponse: .chats_resolved(IMChatRegistry.shared.allChats.map(\.blChatGUID)),
+                withResponse: .chats_resolved(IMChatRegistry.shared.allChats.map(\.blChatIdentifier)),
                 ipcChannel: ipcChannel
             )
             span.finish()
@@ -44,6 +46,11 @@ extension GetChatsCommand: Runnable {
         // GRDB opens chat.db with full-disk-access credentials and runs a read-only
         // SELECT against chat_message_join ⋈ chat; no private-framework calls in the
         // hot path. See BarcelonaDB/Queries/ChatMessageJoins.swift.
+        //
+        // chat.db doesn't expose `groupID` via the timestamp query — `thread_id` is
+        // left nil and the bridge will populate it via a follow-up `get_chat` call
+        // for each portal it decides to backfill. The Go-side `imessage.ChatIdentifier`
+        // struct declares `thread_id` with `omitempty`, so nil is wire-compatible.
         do {
             let timestamps = try await DBReader.shared.latestMessageTimestamps()
 
@@ -54,7 +61,9 @@ extension GetChatsCommand: Runnable {
                 .filter { _, pair in pair.0 > min_timestamp }
                 .map(\.value.1)
 
-            payload.reply(withResponse: .chats_resolved(guids.dedupeChatGUIDs()), ipcChannel: ipcChannel)
+            let identifiers = guids.dedupeChatGUIDs().map { ChatIdentifier(chat_guid: $0) }
+
+            payload.reply(withResponse: .chats_resolved(identifiers), ipcChannel: ipcChannel)
             span.finish()
         } catch {
             payload.fail(strategy: .internal_error(error.localizedDescription), ipcChannel: ipcChannel)
