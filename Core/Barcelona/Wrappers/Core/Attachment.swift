@@ -84,9 +84,27 @@ public struct Attachment: Codable, Hashable {
     }
 
     public init?(guid: String) {
-        guard let item = IMFileTransferCenter.sharedInstance().transfer(forGUID: guid, includeRemoved: false),
-            item.ensuredLocalPath != nil
-        else {
+        // `transferForGUID:includeRemoved:` is a private IMSharedUtilities selector that
+        // existed on macOS 13–15 but was removed in macOS 26. Paris still declares it in
+        // its IMFileTransferCenter headers, so the Swift compiler accepts the call, but
+        // invoking it on macOS 26 raises NSInvalidArgumentException
+        // ("unrecognized selector sent to instance ...") and aborts the daemon mid-sync
+        // (e.g. when GetGroupChatAvatarCommand fetches a chat avatar). Guard with
+        // respondsToSelector and fall back to the single-arg `transferForGUID:` variant,
+        // which is widely used elsewhere in this codebase and remains available on
+        // macOS 26. (`includeRemoved: false` matches the default behavior of the
+        // single-arg method, so the fallback is semantically equivalent.)
+        let center = IMFileTransferCenter.sharedInstance()
+        let twoArgSel = NSSelectorFromString("transferForGUID:includeRemoved:")
+
+        let item: IMFileTransfer?
+        if (center as AnyObject).responds(to: twoArgSel) {
+            item = center.transfer(forGUID: guid, includeRemoved: false)
+        } else {
+            item = center.transfer(forGUID: guid)
+        }
+
+        guard let item, item.ensuredLocalPath != nil else {
             return nil
         }
 
