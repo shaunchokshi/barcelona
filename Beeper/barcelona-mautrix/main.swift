@@ -3,9 +3,6 @@ import Logging
 import Sentry
 import SwiftCLI
 
-// Set up logging
-private let log = Logger(label: "BarcelonaMain")
-
 SentrySDK.startTransaction(name: "BarcelonaMautrix", operation: "startup", bindToScope: true)
 LoggingSystem.bootstrap { label in
     var handler = StreamLogHandler.standardOutput(label: label)
@@ -18,6 +15,22 @@ LoggingSystem.bootstrap { label in
         ]
     )
 }
+
+// Set up logging
+//
+// IMPORTANT: this Logger MUST be constructed AFTER `LoggingSystem.bootstrap`
+// runs. swift-log's `Logger.init(label:)` snapshots the LogHandler factory at
+// construction time, so a Logger created before bootstrap is forever bound to
+// the default handler — which writes to stderr. mautrix-imessage's Go-side
+// process supervisor labels everything Barcelona writes to stderr as `ERR`
+// (visible as `module=iMessage/Barcelona/Stderr` in the bridge log), so
+// info-level startup messages from BarcelonaMain (e.g. "Starting without
+// setting up Sentry", "Legacy command fallback") were misleadingly surfacing
+// as bridge errors in operator logs even though they're informational.
+// Constructing the Logger after bootstrap binds it to the configured
+// stdout-based MultiplexLogHandler and keeps these messages out of the
+// error stream.
+private let log = Logger(label: "BarcelonaMain")
 
 // Set up sentry
 func getSerial() -> String? {
